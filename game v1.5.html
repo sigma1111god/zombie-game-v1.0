@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zombie Survival v1.3</title>
+<style>
+body{margin:0;background:#1a1a1a;color:white;font-family:Courier New;overflow:hidden}
+canvas{display:block;background:#0d0d0d;cursor:crosshair}
+#ui{position:absolute;top:20px;left:20px}
+.stat{font-size:22px;margin-bottom:6px}
+</style>
+</head>
+<body>
+
+<div id="ui">
+<div class="stat">HEALTH: <span id="health">5</span></div>
+<div class="stat">KILLS: <span id="kills">0</span></div>
+<div class="stat">GUN: <span id="gun">Pistol</span></div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas=document.getElementById("gameCanvas");
+const ctx=canvas.getContext("2d");
+canvas.width=innerWidth;
+canvas.height=innerHeight;
+
+const healthEl=document.getElementById("health");
+const killsEl=document.getElementById("kills");
+const gunEl=document.getElementById("gun");
+
+let player={x:canvas.width/2,y:canvas.height/2,size:20,speed:4,health:5};
+let zombies=[],bullets=[],keys={},mouse={x:0,y:0};
+let kills=0,isDead=false,teammate=null,lastShot=0;
+
+const guns=[
+{name:"Pistol",rate:400,speed:10,damage:1,unlock:0},
+{name:"AK-47",rate:200,speed:13,damage:2,unlock:3},
+{name:"M1 Garand",rate:300,speed:15,damage:3,unlock:7},
+{name:"M1A1",rate:150,speed:17,damage:4,unlock:10},
+{name:"Minigun",rate:70,speed:20,damage:5,unlock:16}
+];
+
+let currentGunIndex=0;
+let currentGun=guns[currentGunIndex];
+
+window.addEventListener("keydown",e=>{
+keys[e.code]=true;
+
+if(e.key>="1" && e.key<="4"){
+let index=parseInt(e.key)-1;
+if(guns[index] && kills>=guns[index].unlock){
+currentGunIndex=index;
+currentGun=guns[currentGunIndex];
+gunEl.textContent=currentGun.name;
+}
+}
+});
+
+window.addEventListener("keyup",e=>keys[e.code]=false);
+window.addEventListener("mousemove",e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+window.addEventListener("mousedown",shoot);
+
+function shoot(){
+if(isDead) return;
+if(Date.now()-lastShot<currentGun.rate) return;
+lastShot=Date.now();
+const a=Math.atan2(mouse.y-player.y,mouse.x-player.x);
+bullets.push({
+x:player.x,
+y:player.y,
+vx:Math.cos(a)*currentGun.speed,
+vy:Math.sin(a)*currentGun.speed,
+damage:currentGun.damage
+});
+}
+
+function spawnZombie(c){
+for(let i=0;i<c;i++){
+let x=Math.random()<0.5?Math.random()<0.5?-50:canvas.width+50:Math.random()*canvas.width;
+let y=Math.random()<0.5?Math.random()*canvas.height:Math.random()<0.5?-50:canvas.height+50;
+zombies.push({x,y,size:20,speed:1.5+Math.random(),health:3});
+}
+}
+
+setInterval(()=>spawnZombie(3),5000);
+setInterval(()=>spawnZombie(10),34000);
+
+function unlocks(){
+if(kills>=20 && !teammate){
+teammate={x:player.x+40,y:player.y+40,health:8,lastShot:0};
+}
+}
+
+function update(){
+if(isDead) return;
+
+if(keys["KeyW"]) player.y-=player.speed;
+if(keys["KeyS"]) player.y+=player.speed;
+if(keys["KeyA"]) player.x-=player.speed;
+if(keys["KeyD"]) player.x+=player.speed;
+
+bullets.forEach((b,i)=>{
+b.x+=b.vx;b.y+=b.vy;
+if(b.x<0||b.x>canvas.width||b.y<0||b.y>canvas.height) bullets.splice(i,1);
+});
+
+zombies.forEach((z,zi)=>{
+const a=Math.atan2(player.y-z.y,player.x-z.x);
+z.x+=Math.cos(a)*z.speed;
+z.y+=Math.sin(a)*z.speed;
+
+if(Math.hypot(player.x-z.x,player.y-z.y)<player.size+z.size){
+zombies.splice(zi,1);
+player.health--;
+healthEl.textContent=player.health;
+if(player.health<=0){isDead=true;location.reload();}
+}
+
+bullets.forEach((b,bi)=>{
+if(Math.hypot(b.x-z.x,b.y-z.y)<z.size){
+z.health-=b.damage;
+bullets.splice(bi,1);
+if(z.health<=0){
+zombies.splice(zi,1);
+kills++;
+killsEl.textContent=kills;
+unlocks();
+}
+}
+});
+});
+
+if(teammate){
+teammate.x+=(player.x-teammate.x)*0.05;
+teammate.y+=(player.y-teammate.y)*0.05;
+
+if(Date.now()-teammate.lastShot>100){
+const target=zombies[0];
+if(target){
+const a=Math.atan2(target.y-teammate.y,target.x-teammate.x);
+bullets.push({
+x:teammate.x,
+y:teammate.y,
+vx:Math.cos(a)*18,
+vy:Math.sin(a)*18,
+damage:5
+});
+teammate.lastShot=Date.now();
+}
+}
+}
+}
+
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ctx.fillStyle="#0f0";
+ctx.beginPath();
+ctx.arc(player.x,player.y,player.size,0,Math.PI*2);
+ctx.fill();
+
+if(teammate){
+ctx.fillStyle="#00f";
+ctx.beginPath();
+ctx.arc(teammate.x,teammate.y,15,0,Math.PI*2);
+ctx.fill();
+}
+
+ctx.fillStyle="#f33";
+zombies.forEach(z=>{
+ctx.beginPath();
+ctx.arc(z.x,z.y,z.size,0,Math.PI*2);
+ctx.fill();
+});
+
+ctx.fillStyle="#ff0";
+bullets.forEach(b=>ctx.fillRect(b.x,b.y,4,4));
+
+requestAnimationFrame(()=>{update();draw();});
+}
+
+draw();
+</script>
+</body>
+</html>
