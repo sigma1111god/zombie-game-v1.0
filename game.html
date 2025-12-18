@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie Survival 2025</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+        canvas { display: block; background: #0d0d0d; cursor: crosshair; }
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        .stat { font-size: 24px; text-shadow: 2px 2px #000; margin-bottom: 10px; }
+        #death-screen { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; background: rgba(0,0,0,0.8); padding: 50px; border: 2px solid red; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat">HEALTH: <span id="health">5</span>/5</div>
+        <div class="stat">SCORE: <span id="score">0</span></div>
+        <div class="stat">NEXT SPAWN: <span id="timer">10</span>s</div>
+    </div>
+    <div id="death-screen">
+        <h1 style="color: red; font-size: 64px;">YOU DIED</h1>
+        <p>Respawning in 3 seconds...</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const healthEl = document.getElementById('health');
+const scoreEl = document.getElementById('score');
+const timerEl = document.getElementById('timer');
+const deathScreen = document.getElementById('death-screen');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let player = { x: canvas.width/2, y: canvas.height/2, size: 20, speed: 4, health: 5, score: 0 };
+let zombies = [];
+let bullets = [];
+let keys = {};
+let mouse = { x: 0, y: 0 };
+let spawnTimer = 10;
+let waveTimer = 30;
+let isDead = false;
+
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+window.addEventListener('mousedown', shoot);
+
+function shoot() {
+    if (isDead) return;
+    const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+    bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 10, vy: Math.sin(angle) * 10 });
+}
+
+function spawnZombie(count = 5) {
+    for(let i=0; i<count; i++) {
+        let x, y;
+        if (Math.random() < 0.5) {
+            x = Math.random() < 0.5 ? -50 : canvas.width + 50;
+            y = Math.random() * canvas.height;
+        } else {
+            x = Math.random() * canvas.width;
+            y = Math.random() < 0.5 ? -50 : canvas.height + 50;
+        }
+        zombies.push({ x, y, speed: 1.5 + Math.random(), size: 20 });
+    }
+}
+
+function respawn() {
+    isDead = false;
+    player.health = 5;
+    player.x = canvas.width/2;
+    player.y = canvas.height/2;
+    zombies = [];
+    bullets = [];
+    deathScreen.style.display = 'none';
+    healthEl.innerText = player.health;
+}
+
+function update() {
+    if (isDead) return;
+
+    // Movement
+    if (keys['KeyW']) player.y -= player.speed;
+    if (keys['KeyS']) player.y += player.speed;
+    if (keys['KeyA']) player.x -= player.speed;
+    if (keys['KeyD']) player.x += player.speed;
+
+    // Timers
+    spawnTimer -= 1/60;
+    waveTimer -= 1/60;
+    timerEl.innerText = Math.ceil(spawnTimer);
+
+    if (spawnTimer <= 0) {
+        spawnZombie(1);
+        spawnTimer = 10;
+    }
+    if (waveTimer <= 0) {
+        spawnZombie(5);
+        waveTimer = 60;
+    }
+
+    // Bullets
+    bullets.forEach((b, i) => {
+        b.x += b.vx;
+        b.y += b.vy;
+        if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+    });
+
+    // Zombies
+    zombies.forEach((z, i) => {
+        const angle = Math.atan2(player.y - z.y, player.x - z.x);
+        z.x += Math.cos(angle) * z.speed;
+        z.y += Math.sin(angle) * z.speed;
+
+        // Hit Player
+        const dist = Math.hypot(player.x - z.x, player.y - z.y);
+        if (dist < player.size + z.size) {
+            zombies.splice(i, 1);
+            player.health--;
+            healthEl.innerText = player.health;
+            if (player.health <= 0) {
+                isDead = true;
+                deathScreen.style.display = 'block';
+                setTimeout(respawn, 3000);
+            }
+        }
+
+        // Hit by Bullet
+        bullets.forEach((b, bi) => {
+            if (Math.hypot(b.x - z.x, b.y - z.y) < z.size) {
+                zombies.splice(i, 1);
+                bullets.splice(bi, 1);
+                player.score += 100;
+                scoreEl.innerText = player.score;
+            }
+        });
+    });
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Player
+    ctx.fillStyle = '#00ff00';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size, 0, Math.PI*2);
+    ctx.fill();
+
+    // Draw Zombies
+    ctx.fillStyle = '#ff3300';
+    zombies.forEach(z => {
+        ctx.beginPath();
+        ctx.arc(z.x, z.y, z.size, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    // Draw Bullets
+    ctx.fillStyle = '#ffff00';
+    bullets.forEach(b => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    requestAnimationFrame(() => {
+        update();
+        draw();
+    });
+}
+
+draw();
+</script>
+</body>
+</html>
